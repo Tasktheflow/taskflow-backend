@@ -7,12 +7,12 @@ const Activity = require("../models/activity.model");
 // CREATE PROJECT
 const createProject = async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { projectTitle, description } = req.body;
 
-    if (!name) return res.status(400).json({ message: "Project name is required" });
+    if (!projectTitle) return res.status(400).json({ message: "Project title is required" });
 
     const project = await Project.create({
-      name,
+      projectTitle,
       description,
       owner: req.user._id,
       members: [req.user._id],
@@ -24,7 +24,7 @@ const createProject = async (req, res) => {
   action: "CREATE_PROJECT",
   entityType: "PROJECT",
   entityId: project._id,
-  message: `Project "${project.name}" was created`,
+  message: `Project "${project.projectTitle}" was created`,
 });
 
     res.status(201).json({
