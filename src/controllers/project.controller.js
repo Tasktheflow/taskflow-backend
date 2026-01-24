@@ -180,12 +180,103 @@ const addMember = async (req, res) => {
   message: `${user.email} was added to the project`,
 });
 
+await notify({
+  user: user._id,
+  type: "ADDED_TO_PROJECT",
+  project: project._id,
+  message: `You were added to project "${project.name}"`,
+});
+
+await sendEmail({
+  to: user.email,
+  subject: "Added to a project",
+  html: `
+    <p>Hello ${user.username},</p>
+    <p>You were added to the project <b>${project.name}</b>.</p>
+  `,
+});
 
     res.json({ message: "Member added successfully", project });
   } catch (error) {
     res.status(500).json({ message: "Failed to add member" });
   }
 };
+
+// REMOVE MEMBER FROM PROJECT
+const removeMember = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { userId } = req.body;
+
+    const project = await Project.findOne({
+      _id: projectId,
+      owner: req.user._id, // only owner
+    });
+
+    if (!project) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    //  Owner cannot be removed
+    if (project.owner.toString() === userId) {
+      return res.status(400).json({
+        message: "Project owner cannot be removed",
+      });
+    }
+
+    // User must be a member
+    if (!project.members.includes(userId)) {
+      return res.status(404).json({
+        message: "User is not a project member",
+      });
+    }
+
+    // Remove member
+    project.members = project.members.filter(
+      (member) => member.toString() !== userId
+    );
+    await project.save();
+
+    const removedUser = await User.findById(userId);
+
+    // Activity log
+    await logActivity({
+      project: project._id,
+      user: req.user._id,
+      action: "REMOVE_MEMBER",
+      entityType: "PROJECT",
+      entityId: userId,
+      message: `${removedUser.email} was removed from the project`,
+    });
+
+    //  app notification
+    await notify({
+      user: userId,
+      type: "REMOVED_FROM_PROJECT",
+      project: project._id,
+      message: `You were removed from project "${project.name}"`,
+    });
+
+    //  Email
+    await sendEmail({
+      to: removedUser.email,
+      subject: "Removed from project",
+      html: `
+        <p>Hello ${removedUser.username},</p>
+        <p>You were removed from the project <b>${project.name}</b>.</p>
+      `,
+    });
+
+    res.json({
+      success: true,
+      message: "Member removed successfully",
+      project,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to remove member" });
+  }
+};
+
 
 const addProjectComment = async (req, res) => {
   try {
@@ -228,6 +319,7 @@ module.exports = {
   createProject,
   getMyProjects,
   addMember,
+  removeMember,
   deleteProject,
   getDeletedProjects,
   restoreProject,

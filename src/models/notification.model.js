@@ -10,7 +10,14 @@ const notificationSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ["TASK_ASSIGNED", "TASK_COMPLETED"],
+      enum: [
+        "LOGIN_ALERT",
+        "TASK_ASSIGNED",
+         "TASK_COMPLETED",
+         "ADDED_TO_PROJECT",
+         "REMOVED_FROM_PROJECT"
+
+        ],
       required: true,
     },
 
@@ -40,3 +47,5 @@ const notificationSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model("Notification", notificationSchema);
+notificationSchema.index({ user: 1, read: 1, createdAt: -1 });
+

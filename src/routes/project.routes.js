@@ -5,6 +5,7 @@ const {
   createProject,
   getMyProjects,
   addMember,
+  removeMember,
   deleteProject,
   getDeletedProjects,
   restoreProject,
@@ -21,6 +22,8 @@ router.patch("/restore/:id", authMiddleware, restoreProject);
 router.get("/:id/activity", authMiddleware, getProjectActivity);
 
 router.post("/:projectId/members", authMiddleware, addMember);
+router.patch("/:projectId/remove-member", authMiddleware, removeMember);
+
 router.delete("/:id", authMiddleware, deleteProject);
 router.post("/:id/comments", authMiddleware, addProjectComment);
 

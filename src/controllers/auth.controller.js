@@ -58,6 +58,7 @@ const signup = async (req, res) => {
       },
       },
     });
+    
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -67,52 +68,78 @@ const signup = async (req, res) => {
   }
 };
 // Signin USER
-const signin  = async (req, res) => {
+// Signin USER
+const signin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Email and password required" });
+        message: "Email and password required",
+      });
     }
 
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials" });
+        message: "Invalid credentials",
+      });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: "Incorrect password" });
+        message: "Incorrect password",
+      });
     }
 
     const token = generateToken(user);
-     
+
+    //  Notification
+    await notify({
+      user: user._id,
+      type: "LOGIN_ALERT",
+      message: "New login detected on your account",
+    });
+
+    // Email
+    await sendEmail({
+      to: user.email,
+      subject: "New login detected",
+      html: `
+        <p>Hello ${user.username},</p>
+        <p>A new login was detected on your account.</p>
+        <p>If this wasn't you, please reset your password immediately.</p>
+      `,
+    });
+
+    // SEND RESPONSE LAST
     res.status(200).json({
       success: true,
       message: "Login successful",
       data: {
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-      },
+        token,
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+        },
       },
     });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
-      message: "Server error",});
+      message: "Server error",
+    });
   }
 };
+
 
 module.exports = {
   signup,
