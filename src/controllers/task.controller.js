@@ -60,6 +60,7 @@ const createTask = async (req, res) => {
         title: task.title,
         description: task.description,
         status: task.status,
+        priority:task.priority,
         dueDate: task.dueDate,
         owner: task.owner,
         project: task.project,
