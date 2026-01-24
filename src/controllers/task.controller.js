@@ -14,7 +14,7 @@ const Activity = require("../models/activity.model");
 // CREATE TASK
 const createTask = async (req, res) => {
   try {
-    const { title, description, dueDate, projectId } = req.body;
+    const { title, description, dueDate, projectId, priority } = req.body;
 
     if (!title) {
       return res.status(400).json({ message: "Title is required" });
@@ -37,6 +37,7 @@ const createTask = async (req, res) => {
       description,
       dueDate,
       project: projectId || null,
+      priority:priority || "Medium",
       owner: req.user._id,
     });
 
