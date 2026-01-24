@@ -150,10 +150,15 @@ const updateTask = async (req, res) => {
       return res.status(404).json({ message: "Task not found" });
     }
 
-    // Prevent status update here
-    delete req.body.status;
+    // ✅ Allowed fields ONLY
+    const allowedUpdates = ["title", "description", "priority", "dueDate"];
 
-    Object.assign(task, req.body);
+    allowedUpdates.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        task[field] = req.body[field];
+      }
+    });
+
     await task.save();
 
     await logActivity({
@@ -168,12 +173,21 @@ const updateTask = async (req, res) => {
     res.json({
       success: true,
       message: "Task updated successfully",
-      data: task,
+      data: {
+        id: task._id,
+        title: task.title,
+        description: task.description,
+        priority: task.priority,
+        status: task.status,
+        dueDate: task.dueDate,
+        updatedAt: task.updatedAt,
+      },
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to update task" });
   }
 };
+
 
 
 const updateTaskStatus = async (req, res) => {
