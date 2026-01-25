@@ -1,6 +1,8 @@
 const User = require("../models/User.model");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const notify = require("../utils/notify");
+const sendEmail =require("../utils/sendEmail");
 
 const generateToken = (user) => {
   return jwt.sign(
@@ -98,7 +100,7 @@ const signin = async (req, res) => {
 
     const token = generateToken(user);
 
-    // SEND RESPONSE FIRST
+    // SEND RESPONSE
     res.status(200).json({
       success: true,
       message: "Login successful",
@@ -113,7 +115,7 @@ const signin = async (req, res) => {
       },
     });
 
-    // BACKGROUND TASKS (NON-BLOCKING)
+    
     try {
       await notify({
         user: user._id,

@@ -1,6 +1,5 @@
 const nodemailer = require("nodemailer");
-const sendEmail = require("./sendEmail");
-const notify = require("./notify");
+
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -12,27 +11,5 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-
-
-const notifyAndEmail = async ({
-  user,
-  type,
-  message,
-  email,
-  subject,
-}) => {
-  await notify({ user, type, message });
-
-  if (email) {
-    await sendEmail({
-      to: email,
-      subject,
-      html: `<p>${message}</p>`,
-    });
-  }
-};
-
-module.exports = notifyAndEmail;
-
-
 module.exports = transporter;
+
