@@ -67,7 +67,7 @@ const signup = async (req, res) => {
     });
   }
 };
-// Signin USER
+
 // Signin USER
 const signin = async (req, res) => {
   try {
@@ -98,25 +98,7 @@ const signin = async (req, res) => {
 
     const token = generateToken(user);
 
-    //  Notification
-    await notify({
-      user: user._id,
-      type: "LOGIN_ALERT",
-      message: "New login detected on your account",
-    });
-
-    // Email
-    await sendEmail({
-      to: user.email,
-      subject: "New login detected",
-      html: `
-        <p>Hello ${user.username},</p>
-        <p>A new login was detected on your account.</p>
-        <p>If this wasn't you, please reset your password immediately.</p>
-      `,
-    });
-
-    // SEND RESPONSE LAST
+    // SEND RESPONSE FIRST
     res.status(200).json({
       success: true,
       message: "Login successful",
@@ -130,6 +112,27 @@ const signin = async (req, res) => {
         },
       },
     });
+
+    // BACKGROUND TASKS (NON-BLOCKING)
+    try {
+      await notify({
+        user: user._id,
+        type: "LOGIN_ALERT",
+        message: "New login detected on your account",
+      });
+
+      await sendEmail({
+        to: user.email,
+        subject: "New login detected",
+        html: `
+          <p>Hello ${user.username},</p>
+          <p>A new login was detected on your account.</p>
+          <p>If this wasn't you, please reset your password immediately.</p>
+        `,
+      });
+    } catch (err) {
+      console.error("Login notification failed:", err.message);
+    }
 
   } catch (error) {
     console.error(error);
