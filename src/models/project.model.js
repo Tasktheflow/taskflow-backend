@@ -11,6 +11,14 @@ const projectSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+
+  color: {
+    type: String,
+    enum: ["green", "blue", "gray", "red", "yellow", "teal", "orange"],
+    default: "green",
+    required: true
+},
+
     owner: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

@@ -14,31 +14,69 @@ const Activity = require("../models/activity.model");
 // CREATE TASK
 const createTask = async (req, res) => {
   try {
-    const { title, description, dueDate, projectId, priority } = req.body;
+    const { title, description, startDate, dueDate, projectId, priority, assignedTo } = req.body;
 
     if (!title) {
       return res.status(400).json({ message: "Title is required" });
     }
 
-    if (projectId) {
-      const project = await Project.findById(projectId);
+    if (!startDate || !dueDate) {
+  return res.status(400).json({
+    message: "Start date and due date are required",
+  });
+}
 
-      if (!project) {
-        return res.status(404).json({ message: "Project not found" });
-      }
+if (new Date(startDate) > new Date(dueDate)) {
+  return res.status(400).json({
+    message: "Start date cannot be after due date",
+  });
+}
 
-      if (!project.members.includes(req.user._id)) {
-        return res.status(403).json({ message: "Not a project member" });
-      }
-    }
+
+   let project = null;
+
+if (projectId) {
+  project = await Project.findById(projectId);
+
+  if (!project) {
+    return res.status(404).json({ message: "Project not found" });
+  }
+
+  if (!project.members.includes(req.user._id)) {
+    return res.status(403).json({ message: "Not a project member" });
+  }
+}
+
+   if (assignedTo) {
+  const userExists = await User.findById(assignedTo);
+  if (!userExists) {
+    return res.status(400).json({
+      message: "Assigned user does not exist",
+    });
+  }
+
+  if (project && !project.members.some(
+    member => member.toString() === assignedTo
+  )) {
+    return res.status(400).json({
+      message: "Assigned user must be a project member",
+    });
+  }
+}
+
+
 
     const task = await Task.create({
       title,
       description,
+      startDate,
       dueDate,
       project: projectId || null,
       priority:priority || "Medium",
-      owner: req.user._id,
+      createdBy: req.user._id,
+      assignedTo: assignedTo || req.user._id
+
+
     });
 
     await logActivity({
@@ -56,19 +94,22 @@ const createTask = async (req, res) => {
       success: true,
       message: "Task created successfully",
       data: {
-        id: task._id,
-        title: task.title,
-        description: task.description,
-        status: task.status,
-        priority:task.priority,
-        dueDate: task.dueDate,
-        owner: task.owner,
-        project: task.project,
-        deleted: task.deleted,
-        deletedAt: task.deletedAt,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
-      },
+  id: task._id,
+  title: task.title,
+  description: task.description,
+  startDate: task.startDate,
+  status: task.status,
+  priority: task.priority,
+  dueDate: task.dueDate,
+  createdBy: task.createdBy,
+  assignedTo: task.assignedTo,
+  project: task.project,
+  deleted: task.deleted,
+  deletedAt: task.deletedAt,
+  createdAt: task.createdAt,
+  updatedAt: task.updatedAt,
+},
+
     });
   } catch (error) {
     res.status(500).json({
@@ -94,7 +135,8 @@ const getProjectTasks = async (req, res) => {
     }
 
     const tasks = await Task.find({ project: projectId, deleted: false })
-      .populate("owner", "username email");
+     .populate("createdBy", "username email")
+    .populate("assignedTo", "username email");
 
     res.status(200).json(tasks);
   } catch (error) {
@@ -107,20 +149,26 @@ const getProjectTasks = async (req, res) => {
 // Get my tasks exclude deleted
 const getMyTasks = async (req, res) => {
   try {
-    const { status, overdue, sortBy, order } = req.query;
+    const { status, overdue, sortBy, order, type } = req.query;
 
-    // Base filter: only logged-in user's tasks
-    const filter = {
-      owner: req.user._id, deleted: false
-    };
+const filter = { deleted: false };
 
-    // Optional filters
-    if (status) filter.status = status;
+if (type === "assigned") {
+  filter.assignedTo = req.user._id;
+} else if (type === "created") {
+  filter.createdBy = req.user._id;
+} else {
+  // default → assigned to me
+  filter.assignedTo = req.user._id;
+}
 
-    if (overdue === "true") {
-      filter.dueDate = { $lt: new Date() };
-      filter.status = { $ne: "Done" };
-    }
+if (status) filter.status = status;
+
+if (overdue === "true") {
+  filter.dueDate = { $lt: new Date() };
+  filter.status = { $ne: "Done" };
+}
+
 
      const sort = sortBy ? { [sortBy]: order === "desc" ? -1 : 1 } : { createdAt: -1 };
 
@@ -141,16 +189,21 @@ const getMyTasks = async (req, res) => {
 const updateTask = async (req, res) => {
   try {
     const task = await Task.findOne({
-      _id: req.params.id,
-      owner: req.user._id,
-      deleted: false,
-    });
+  _id: req.params.id,
+  deleted: false,
+  $or: [
+    { createdBy: req.user._id },
+    { assignedTo: req.user._id }
+  ]
+});
 
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
     }
 
-    // ✅ Allowed fields ONLY
+    
+
+    // Allowed fields ONLY
     const allowedUpdates = ["title", "description", "priority", "dueDate"];
 
     allowedUpdates.forEach((field) => {
@@ -158,6 +211,12 @@ const updateTask = async (req, res) => {
         task[field] = req.body[field];
       }
     });
+      //validate after updating 
+    if (task.startDate && task.dueDate && task.startDate > task.dueDate) {
+  return res.status(400).json({
+    message: "Due date cannot be before start date",
+  });
+}
 
     await task.save();
 
@@ -201,25 +260,27 @@ const updateTaskStatus = async (req, res) => {
       Done: [],
     };
 
-    const task = await Task.findById(req.params.id).populate("project");
+    const task = await Task.findOne({
+  _id: req.params.id,
+  deleted: false,
+}).populate("project");
+
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
     }
 
     //  Only assigned user
-     if (!task.owner) {
+     if (!task.assignedTo) {
   return res.status(400).json({
     message: "Task must be assigned before changing status",
   });
 }
+if (task.assignedTo.toString() !== req.user._id.toString()) {
+  return res.status(403).json({
+    message: "Only assigned user can change task status",
+  });
+}
 
-    if (task.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        message: "Only assigned user can change task status",
-      });
-    }
-
-   
 
     const allowed = STATUS_FLOW[task.status] || [];
     if (!allowed.includes(status)) {
@@ -246,27 +307,28 @@ const updateTaskStatus = async (req, res) => {
 
     // Notify project owner ONLY when completed
     if (status === "Done") {
-      await notify({
-        user: task.project.owner,
-        type: "TASK_COMPLETED",
-        project: task.project._id,
-        task: task._id,
-        message: `Task "${task.title}" was completed`,
-      });
-    }
+  await notify({
+    user: task.project.owner,
+    type: "TASK_COMPLETED",
+    project: task.project._id,
+    task: task._id,
+    message: `Task "${task.title}" was completed`,
+  });
 
-    if (status === "Done") {
   const owner = await User.findById(task.project.owner);
 
-  await sendEmail({
-    to: owner.email,
-    subject: "Task completed",
-    html: `
-      <p>Hello ${owner.username},</p>
-      <p>The task <b>${task.title}</b> has been completed.</p>
-    `,
-  });
+  if (owner) {
+    await sendEmail({
+      to: owner.email,
+      subject: "Task completed",
+      html: `
+        <p>Hello ${owner.username},</p>
+        <p>The task <b>${task.title}</b> has been completed.</p>
+      `,
+    });
+  }
 }
+
 
 
     res.json({
@@ -289,11 +351,16 @@ const updateTaskStatus = async (req, res) => {
 //Soft delete
 const deleteTask = async (req, res) => {
   try {
-    const task = await Task.findOneAndUpdate(
-      { _id: req.params.id, owner: req.user._id },
-      { deleted: true, deletedAt: new Date() },
-      { new: true }
-    );
+   const task = await Task.findOneAndUpdate(
+  { 
+    _id: req.params.id, 
+    createdBy: req.user._id,
+    deleted: false
+  },
+  { deleted: true, deletedAt: new Date() },
+  { new: true }
+);
+
 
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
@@ -328,7 +395,7 @@ const deleteTask = async (req, res) => {
 const getDeletedTasks = async (req, res) => {
   try {
     const tasks = await Task.find({
-      owner: req.user._id, deleted: true });
+      createdBy: req.user._id, deleted: true });
       
     res.status(200).json({
       success: true,
@@ -344,7 +411,7 @@ const getDeletedTasks = async (req, res) => {
 const restoreTask = async (req, res) => {
   try {
     const task = await Task.findOneAndUpdate(
-      { _id: req.params.id, owner: req.user._id, deleted: true },
+      { _id: req.params.id, createdBy: req.user._id, deleted: true },
       { deleted: false, deletedAt: null },
       { new: true }
     );
@@ -380,9 +447,12 @@ const restoreTask = async (req, res) => {
 const getTaskActivity = async (req, res) => {
   try {
     const task = await Task.findOne({
-      _id: req.params.id,
-      owner: req.user._id,
-    });
+  _id: req.params.id,
+  $or: [
+    { createdBy: req.user._id },
+    { assignedTo: req.user._id }
+  ]
+});
 
     if (!task) {
       return res.status(403).json({ message: "Access denied" });
@@ -413,10 +483,13 @@ const addTaskComment = async (req, res) => {
       return res.status(400).json({ message: "Comment is required" });
     }
 
-    const task = await Task.findOne({
-      _id: req.params.id,
-      owner: req.user._id,
-    });
+   const task = await Task.findOne({
+  _id: req.params.id,
+  $or: [
+    { createdBy: req.user._id },
+    { assignedTo: req.user._id }
+  ]
+});
 
     if (!task) {
       return res.status(403).json({ message: "Access denied" });
@@ -457,35 +530,40 @@ const assignTask = async (req, res) => {
   });
 }
 
+// Only task creator can assign
+if (task.createdBy.toString() !== req.user._id.toString()) {
+  return res.status(403).json({
+    message: "Only task creator can assign this task",
+  });
+}
+
 
     // Task must belong to a project
     if (!task.project) {
       return res.status(400).json({ message: "Task is not part of a project" });
     }
 
-    //  ONLY PROJECT OWNER CAN ASSIGN
-    if (task.project.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        message: "Only project owner can assign tasks",
-      });
-    }
-
+    
     // Assigned user must be a project member
-    if (!task.project.members.includes(userId)) {
+   if (!task.project.members.some(
+  member => member.toString() === userId
+))
+ {
       return res.status(400).json({
         message: "User is not a project member",
       });
     }
 
     //prevent re-assigning to same user
-    if (task.owner?.toString() === userId) {
+    if (task.assignedTo?.toString() === userId) {
   return res.status(400).json({
     message: "Task is already assigned to this user",
   });
 }
 
+
     // Assign task
-    task.owner = userId;
+    task.assignedTo = userId;
     await task.save();
 
     await notify({

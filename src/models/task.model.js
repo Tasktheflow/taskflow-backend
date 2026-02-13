@@ -24,20 +24,38 @@ const taskSchema = new mongoose.Schema(
       default: "Todo",
     
     },
+
+    startDate:{
+      type:Date,
+      required: true,
+
+    },
+
     dueDate: {
       type: Date,
+      required: true,
     },
-    owner: {
+
+    createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
 
+     assignedTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
+
     project: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Project",
       default: null,
+
     },
+
+
       // Soft delete fields
     deleted: {
   type: Boolean,
@@ -56,7 +74,7 @@ const taskSchema = new mongoose.Schema(
 // Virtual property to check if task is overdue
 taskSchema.virtual("isOverdue").get(function () {
   if (!this.dueDate) return false;
-  if (this.status === "done") return false;
+  if (this.status === "Done") return false;
   return new Date() > this.dueDate;
 });
 

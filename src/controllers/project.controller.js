@@ -2,40 +2,113 @@ const Project = require("../models/project.model");
 const User = require("../models/User.model");
 const logActivity = require("../utils/activityLogger");
 const Activity = require("../models/activity.model");
+const notify = require("../utils/notify");
+const sendEmail = require("../utils/sendEmail");
+
 
 
 // CREATE PROJECT
 const createProject = async (req, res) => {
   try {
-    const { projectTitle, description } = req.body;
+    const { projectTitle, description, color, email } = req.body;
 
-    if (!projectTitle) return res.status(400).json({ message: "Project title is required" });
+    if (!projectTitle) {
+      return res.status(400).json({
+        success: false,
+        message: "Project title is required",
+      });
+    }
 
+    const allowedColors = [
+      "green",
+      "blue",
+      "gray",
+      "red",
+      "yellow",
+      "teal",
+      "orange",
+    ];
+
+    if (color && !allowedColors.includes(color)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project color",
+      });
+    }
+
+    //  Create project
     const project = await Project.create({
       projectTitle,
       description,
+      color,
       owner: req.user._id,
       members: [req.user._id],
     });
 
-   await logActivity({
-  project: project._id,
-  user: req.user._id,
-  action: "CREATE_PROJECT",
-  entityType: "PROJECT",
-  entityId: project._id,
-  message: `Project "${project.projectTitle}" was created`,
-});
+    //  If email provided invite immediately
+    if (email) {
+      const invitedUser = await User.findOne({ email });
+
+      if (invitedUser) {
+        // Add to members
+        project.members.push(invitedUser._id);
+        await project.save();
+
+        // Log activity
+        await logActivity({
+          project: project._id,
+          user: req.user._id,
+          action: "ADD_MEMBER",
+          entityType: "PROJECT",
+          entityId: invitedUser._id,
+          message: `${invitedUser.email} was added to the project`,
+        });
+
+        // App notification
+        await notify({
+          user: invitedUser._id,
+          type: "ADDED_TO_PROJECT",
+          project: project._id,
+          message: `You were added to project "${project.projectTitle}"`,
+        });
+
+        // Email
+        await sendEmail({
+          to: invitedUser.email,
+          subject: "Added to a project",
+          html: `
+            <p>Hello ${invitedUser.username},</p>
+            <p>You were added to the project <b>${project.projectTitle}</b>.</p>
+          `,
+        });
+      }
+    }
+
+    // Log project creation
+    await logActivity({
+      project: project._id,
+      user: req.user._id,
+      action: "CREATE_PROJECT",
+      entityType: "PROJECT",
+      entityId: project._id,
+      message: `Project "${project.projectTitle}" was created`,
+    });
 
     res.status(201).json({
       success: true,
       message: "Project created",
       data: project,
     });
+
   } catch (error) {
-    res.status(500).json({ message: "Failed to create project" });
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create project",
+    });
   }
 };
+
 
 // Get my projects excluding deleted ones
 const getMyProjects = async (req, res) => {
@@ -73,7 +146,7 @@ await logActivity({
   entityType: "PROJECT",
   entityId: project._id,
   project: project._id,
-  message: `Project "${project.name}" was deleted`,
+  message: `Project "${project.projectTitle}" was deleted`,
 });
 
 
@@ -128,7 +201,7 @@ const restoreProject = async (req, res) => {
   action: "RESTORE_PROJECT",
   entityType: "PROJECT",
   entityId: project._id,
-  message: `Project "${project.name}" was restored`,
+  message: `Project "${project.projectTitle}" was restored`,
 });
 
 
@@ -184,7 +257,7 @@ await notify({
   user: user._id,
   type: "ADDED_TO_PROJECT",
   project: project._id,
-  message: `You were added to project "${project.name}"`,
+  message: `You were added to project "${project.projectTitle}"`,
 });
 
 await sendEmail({
@@ -192,7 +265,7 @@ await sendEmail({
   subject: "Added to a project",
   html: `
     <p>Hello ${user.username},</p>
-    <p>You were added to the project <b>${project.name}</b>.</p>
+    <p>You were added to the project <b>${project.projectTitle}</b>.</p>
   `,
 });
 
@@ -254,7 +327,7 @@ const removeMember = async (req, res) => {
       user: userId,
       type: "REMOVED_FROM_PROJECT",
       project: project._id,
-      message: `You were removed from project "${project.name}"`,
+      message: `You were removed from project "${project.projectTitle}"`,
     });
 
     //  Email
@@ -263,7 +336,7 @@ const removeMember = async (req, res) => {
       subject: "Removed from project",
       html: `
         <p>Hello ${removedUser.username},</p>
-        <p>You were removed from the project <b>${project.name}</b>.</p>
+        <p>You were removed from the project <b>${project.projectTitle}</b>.</p>
       `,
     });
 
