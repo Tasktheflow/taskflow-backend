@@ -10,7 +10,7 @@ const sendEmail = require("../utils/sendEmail");
 // CREATE PROJECT
 const createProject = async (req, res) => {
   try {
-    const { projectTitle, description, color, email } = req.body;
+    const { projectTitle, description, color } = req.body;
 
     if (!projectTitle) {
       return res.status(400).json({
@@ -36,7 +36,6 @@ const createProject = async (req, res) => {
       });
     }
 
-    //  Create project
     const project = await Project.create({
       projectTitle,
       description,
@@ -45,46 +44,6 @@ const createProject = async (req, res) => {
       members: [req.user._id],
     });
 
-    //  If email provided invite immediately
-    if (email) {
-      const invitedUser = await User.findOne({ email });
-
-      if (invitedUser) {
-        // Add to members
-        project.members.push(invitedUser._id);
-        await project.save();
-
-        // Log activity
-        await logActivity({
-          project: project._id,
-          user: req.user._id,
-          action: "ADD_MEMBER",
-          entityType: "PROJECT",
-          entityId: invitedUser._id,
-          message: `${invitedUser.email} was added to the project`,
-        });
-
-        // App notification
-        await notify({
-          user: invitedUser._id,
-          type: "ADDED_TO_PROJECT",
-          project: project._id,
-          message: `You were added to project "${project.projectTitle}"`,
-        });
-
-        // Email
-        await sendEmail({
-          to: invitedUser.email,
-          subject: "Added to a project",
-          html: `
-            <p>Hello ${invitedUser.username},</p>
-            <p>You were added to the project <b>${project.projectTitle}</b>.</p>
-          `,
-        });
-      }
-    }
-
-    // Log project creation
     await logActivity({
       project: project._id,
       user: req.user._id,
@@ -94,17 +53,155 @@ const createProject = async (req, res) => {
       message: `Project "${project.projectTitle}" was created`,
     });
 
+    const populatedProject = await Project.findById(project._id)
+      .populate("members", "username email")
+      .populate("owner", "username email");
+
     res.status(201).json({
       success: true,
       message: "Project created",
-      data: project,
+      data: populatedProject,
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to create project",
+    });
+  }
+};
+
+const inviteMember = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { email } = req.body;
+
+    const project = await Project.findById(projectId);
+
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    // Only owner can invite
+    if (project.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        message: "Only project owner can invite members",
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    // If user exists
+    if (user) {
+
+      // Check if already a member
+      const alreadyMember = project.members.some(
+        member => member.toString() === user._id.toString()
+      );
+
+      if (alreadyMember) {
+        return res.status(400).json({
+          message: "User already a member",
+        });
+      }
+
+      // Add member
+      project.members.push(user._id);
+      await project.save();
+
+      await sendEmail({
+        to: email,
+        subject: "You were added to a project",
+        html: `
+          <p>Hello ${user.username},</p>
+          <p>You have been added to the project <b>${project.projectTitle}</b>.</p>
+        `,
+      });
+
+      const updatedProject = await Project.findById(projectId)
+        .populate("members", "username email");
+
+      return res.status(200).json({
+        success: true,
+        message: "User added successfully",
+        members: updatedProject.members,
+      });
+    }
+
+    // If user does NOT exist → send invitation link
+    const inviteLink = `${process.env.FRONTEND_URL}/register?invite=${projectId}`;
+
+    await sendEmail({
+      to: email,
+      subject: "Project Invitation",
+      html: `
+        <p>You have been invited to join <b>${project.projectTitle}</b>.</p>
+        <p>Click below to register:</p>
+        <a href="${inviteLink}">${inviteLink}</a>
+      `,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Invitation email sent",
     });
 
   } catch (error) {
     console.error(error);
     res.status(500).json({
+      message: "Failed to invite member",
+    });
+  }
+};
+
+
+// GET PROJECT MEMBERS
+const getProjectMembers = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const project = await Project.findById(projectId)
+      .populate("owner", "username email")
+      .populate("members", "username email");
+
+    if (!project || project.deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Ensure only members can see members list
+    if (!project.members.some(
+      member => member._id.toString() === req.user._id.toString()
+    )) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    // Format roles
+    const formattedMembers = project.members.map(member => ({
+      _id: member._id,
+      username: member.username,
+      email: member.email,
+      role:
+        member._id.toString() === project.owner._id.toString()
+          ? "Owner"
+          : "Member",
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: formattedMembers.length,
+      members: formattedMembers,
+    });
+
+  } catch (error) {
+    res.status(500).json({
       success: false,
-      message: "Failed to create project",
+      message: "Failed to fetch members",
     });
   }
 };
@@ -237,39 +334,49 @@ const addMember = async (req, res) => {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    if (project.members.includes(user._id)) {
+    // Proper ObjectId comparison
+    const alreadyMember = project.members.some(
+      member => member.toString() === user._id.toString()
+    );
+
+    if (alreadyMember) {
       return res.status(400).json({ message: "User already a member" });
     }
 
     project.members.push(user._id);
     await project.save();
 
-   await logActivity({
-  project: project._id,
-  user: req.user._id,
-  action: "ADD_MEMBER",
-  entityType: "PROJECT",
-  entityId: user._id,
-  message: `${user.email} was added to the project`,
-});
+    await logActivity({
+      project: project._id,
+      user: req.user._id,
+      action: "ADD_MEMBER",
+      entityType: "PROJECT",
+      entityId: user._id,
+      message: `${user.email} was added to the project`,
+    });
 
-await notify({
-  user: user._id,
-  type: "ADDED_TO_PROJECT",
-  project: project._id,
-  message: `You were added to project "${project.projectTitle}"`,
-});
+    await notify({
+      user: user._id,
+      type: "ADDED_TO_PROJECT",
+      project: project._id,
+      message: `You were added to project "${project.projectTitle}"`,
+    });
 
-await sendEmail({
-  to: user.email,
-  subject: "Added to a project",
-  html: `
-    <p>Hello ${user.username},</p>
-    <p>You were added to the project <b>${project.projectTitle}</b>.</p>
-  `,
-});
+    await sendEmail({
+      to: user.email,
+      subject: "Added to a project",
+      html: `
+        <p>Hello ${user.username},</p>
+        <p>You were added to the project <b>${project.projectTitle}</b>.</p>
+      `,
+    });
 
-    res.json({ message: "Member added successfully", project });
+    res.json({
+      success: true,
+      message: "Member added successfully",
+      project,
+    });
+
   } catch (error) {
     res.status(500).json({ message: "Failed to add member" });
   }
@@ -298,11 +405,16 @@ const removeMember = async (req, res) => {
     }
 
     // User must be a member
-    if (!project.members.includes(userId)) {
-      return res.status(404).json({
-        message: "User is not a project member",
-      });
-    }
+    const isMember = project.members.some(
+  member => member.toString() === userId
+);
+
+if (!isMember) {
+  return res.status(404).json({
+    message: "User is not a project member",
+  });
+}
+
 
     // Remove member
     project.members = project.members.filter(
@@ -390,6 +502,8 @@ const addProjectComment = async (req, res) => {
 
 module.exports = {
   createProject,
+  inviteMember,
+  getProjectMembers,
   getMyProjects,
   addMember,
   removeMember,
