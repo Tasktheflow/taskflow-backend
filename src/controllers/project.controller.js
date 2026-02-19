@@ -4,6 +4,9 @@ const logActivity = require("../utils/activityLogger");
 const Activity = require("../models/activity.model");
 const notify = require("../utils/notify");
 const sendEmail = require("../utils/sendEmail");
+const crypto = require("crypto");
+const Invitation = require("../models/invitation.model");
+
 
 
 
@@ -128,31 +131,66 @@ const inviteMember = async (req, res) => {
       });
     }
 
-    // If user does NOT exist → send invitation link
-    const inviteLink = `${process.env.FRONTEND_URL}/register?invite=${projectId}`;
+    // Prevent duplicate active invitations
+const existingInvite = await Invitation.findOne({
+  email,
+  project: project._id,
+  used: false,
+  expiresAt: { $gt: new Date() }
+});
 
-    await sendEmail({
-      to: email,
-      subject: "Project Invitation",
-      html: `
-        <p>You have been invited to join <b>${project.projectTitle}</b>.</p>
-        <p>Click below to register:</p>
-        <a href="${inviteLink}">${inviteLink}</a>
-      `,
-    });
+if (existingInvite) {
+  return res.status(400).json({
+    message: "User already has a pending invitation",
+  });
+}
 
-    return res.status(200).json({
-      success: true,
-      message: "Invitation email sent",
-    });
+    // Generate token
+const token = crypto.randomBytes(32).toString("hex");
 
-  } catch (error) {
+// Expire in 24 hours
+const expiresAt = new Date();
+expiresAt.setHours(expiresAt.getHours() + 24);
+
+// Save invitation
+await Invitation.create({
+  email,
+  project: project._id,
+  token,
+  expiresAt,
+});
+
+const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${token}`;
+
+
+try {
+  await sendEmail({
+    to: email,
+    subject: "Project Invitation",
+    html: `
+      <p>You have been invited to join <b>${project.projectTitle}</b>.</p>
+      <p>Click below to accept invitation:</p>
+      <a href="${inviteLink}">${inviteLink}</a>
+      <p>This link expires in 24 hours.</p>
+    `,
+  });
+} catch (err) {
+  console.error("Email failed:", err.message);
+}
+
+
+return res.status(200).json({
+  success: true,
+  message: "Invitation email sent",
+});
+    } catch (error) {
     console.error(error);
-    res.status(500).json({
+    return res.status(500).json({
       message: "Failed to invite member",
     });
   }
 };
+
 
 
 // GET PROJECT MEMBERS

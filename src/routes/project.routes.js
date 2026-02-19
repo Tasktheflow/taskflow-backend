@@ -13,6 +13,12 @@ const {
   restoreProject,
   addProjectComment,
 } = require("../controllers/project.controller");
+const { acceptInvitation } = require("../controllers/invitation.controller");
+
+const optionalAuth = require("../middlewares/optionalAuth");
+
+
+
 
 const { getProjectActivity } = require("../controllers/activity.controller");
 
@@ -23,6 +29,8 @@ router.get("/deleted", authMiddleware, getDeletedProjects);
 router.patch("/restore/:id", authMiddleware, restoreProject);
 router.get("/:id/activity", authMiddleware, getProjectActivity);
 router.post("/:projectId/invite", authMiddleware, inviteMember);
+router.post("/invitations/accept", authMiddleware, acceptInvitation);
+
 
 
 router.post("/:projectId/members", authMiddleware, addMember);
