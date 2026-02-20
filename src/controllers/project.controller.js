@@ -76,9 +76,8 @@ const createProject = async (req, res) => {
 
 const inviteMember = async (req, res) => {
   try {
-    const { projectId } = req.params;
-    const { email } = req.body;
-
+    const { projectId, email } = req.body;
+  
     const project = await Project.findById(projectId);
 
     if (!project) {

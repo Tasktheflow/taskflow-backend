@@ -3,7 +3,6 @@ const Project = require("../models/project.model");
 const logActivity = require("../utils/activityLogger");
 const notify = require("../utils/notify");
 
-
 const acceptInvitation = async (req, res) => {
   try {
     const { token } = req.body;
@@ -38,7 +37,7 @@ const acceptInvitation = async (req, res) => {
       });
     }
 
-    // Ensure invite belongs to logged-in user
+    //  Ensure invite belongs to logged-in user
     if (invitation.email.toLowerCase() !== req.user.email.toLowerCase()) {
       return res.status(403).json({
         success: false,
@@ -63,7 +62,7 @@ const acceptInvitation = async (req, res) => {
       project.members.push(req.user._id);
       await project.save();
 
-      // LOG ACTIVITY
+      //  Activity Log
       await logActivity({
         project: project._id,
         user: req.user._id,
@@ -72,9 +71,16 @@ const acceptInvitation = async (req, res) => {
         entityId: project._id,
         message: `${req.user.email} joined the project`,
       });
+
+      // Notify Project Owner
+      await notify({
+        user: project.owner, // owner gets notification
+        type: "PROJECT_JOINED",
+        project: project._id,
+        message: `${req.user.username} joined your project "${project.projectTitle}"`,
+      });
     }
 
-    // Delete invitation after acceptance
     await Invitation.deleteOne({ _id: invitation._id });
 
     return res.status(200).json({
