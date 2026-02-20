@@ -13,7 +13,7 @@ const Invitation = require("../models/invitation.model");
 // CREATE PROJECT
 const createProject = async (req, res) => {
   try {
-    const { projectTitle, description, color } = req.body;
+    const { projectTitle, description, color, members } = req.body;
 
     if (!projectTitle) {
       return res.status(400).json({
@@ -56,111 +56,128 @@ const createProject = async (req, res) => {
       message: `Project "${project.projectTitle}" was created`,
     });
 
+    //  Handle initial invitations BEFORE sending response
+    if (members && Array.isArray(members)) {
+      for (const email of members) {
+        const normalizedEmail = email.toLowerCase();
+
+        const existingInvite = await Invitation.findOne({
+          email: normalizedEmail,
+          project: project._id,
+          status: "pending",
+          expiresAt: { $gt: new Date() },
+        });
+
+        if (existingInvite) continue;
+
+        const token = crypto.randomBytes(32).toString("hex");
+
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 24);
+
+        await Invitation.create({
+          email: normalizedEmail,
+          project: project._id,
+          token,
+          status: "pending",
+          expiresAt,
+        });
+
+        const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${token}`;
+
+        await sendEmail({
+          to: normalizedEmail,
+          subject: "Project Invitation",
+          html: `
+            <p>You were invited to join <b>${project.projectTitle}</b>.</p>
+            <a href="${inviteLink}">${inviteLink}</a>
+          `,
+        });
+      }
+    }
+
     const populatedProject = await Project.findById(project._id)
       .populate("members", "username email")
       .populate("owner", "username email");
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: "Project created",
+      message: "Project created successfully",
       data: populatedProject,
     });
 
   } catch (error) {
-    res.status(500).json({
+    console.error(error);
+    return res.status(500).json({
       success: false,
       message: "Failed to create project",
     });
   }
 };
-
+// INVITE MEMBER 
 const inviteMember = async (req, res) => {
   try {
-    const { projectId, email } = req.body;
+    const { projectId } = req.params;
+    const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
     }
 
     const project = await Project.findById(projectId);
 
-    if (!project) {
-      return res.status(404).json({ message: "Project not found" });
+    if (!project || project.deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
     }
 
     // Only owner can invite
     if (project.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
+        success: false,
         message: "Only project owner can invite members",
       });
     }
 
     const normalizedEmail = email.toLowerCase();
 
-    const user = await User.findOne({ email: normalizedEmail });
-
-    
-    // USER EXISTS
-    
-    if (user) {
-      const alreadyMember = project.members.some(
-        member => member.toString() === user._id.toString()
-      );
-
-      if (alreadyMember) {
-        return res.status(400).json({
-          message: "User already a member",
-        });
-      }
-
-      project.members.push(user._id);
-      await project.save();
-
-      // Activity log
-      await logActivity({
-        project: project._id,
-        user: req.user._id,
-        action: "INVITE_MEMBER",
-        entityType: "PROJECT",
-        entityId: project._id,
-        message: `${req.user.email} added ${normalizedEmail} to the project`,
-      });
-
-      await sendEmail({
-        to: normalizedEmail,
-        subject: "You were added to a project",
-        html: `
-          <p>Hello ${user.username},</p>
-          <p>You have been added to the project <b>${project.projectTitle}</b>.</p>
-        `,
-      });
-
-      const updatedProject = await Project.findById(projectId)
-        .populate("members", "username email");
-
-      return res.status(200).json({
-        success: true,
-        message: "User added successfully",
-        members: updatedProject.members,
-      });
-    }
-
-    
-    // USER DOES NOT EXIST
-
+    // Prevent duplicate pending invite
     const existingInvite = await Invitation.findOne({
       email: normalizedEmail,
       project: project._id,
       status: "pending",
-      expiresAt: { $gt: new Date() }
+      expiresAt: { $gt: new Date() },
     });
 
     if (existingInvite) {
       return res.status(400).json({
+        success: false,
         message: "User already has a pending invitation",
       });
     }
 
+    // Prevent inviting existing member
+    const existingUser = await User.findOne({ email: normalizedEmail });
+
+    if (existingUser) {
+      const alreadyMember = project.members.some(
+        (member) => member.toString() === existingUser._id.toString()
+      );
+
+      if (alreadyMember) {
+        return res.status(400).json({
+          success: false,
+          message: "User already a project member",
+        });
+      }
+    }
+
+    // Create invitation token
     const token = crypto.randomBytes(32).toString("hex");
 
     const expiresAt = new Date();
@@ -174,7 +191,6 @@ const inviteMember = async (req, res) => {
       expiresAt,
     });
 
-    // Activity log
     await logActivity({
       project: project._id,
       user: req.user._id,
@@ -186,34 +202,30 @@ const inviteMember = async (req, res) => {
 
     const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${token}`;
 
-    try {
-      await sendEmail({
-        to: normalizedEmail,
-        subject: "Project Invitation",
-        html: `
-          <p>You have been invited to join <b>${project.projectTitle}</b>.</p>
-          <p>Click below to accept invitation:</p>
-          <a href="${inviteLink}">${inviteLink}</a>
-          <p>This link expires in 24 hours.</p>
-        `,
-      });
-    } catch (err) {
-      console.error("Email failed:", err.message);
-    }
+    await sendEmail({
+      to: normalizedEmail,
+      subject: "Project Invitation",
+      html: `
+        <p>You were invited to join <b>${project.projectTitle}</b>.</p>
+        <p>Click below to accept:</p>
+        <a href="${inviteLink}">${inviteLink}</a>
+        <p>This link expires in 24 hours.</p>
+      `,
+    });
 
     return res.status(200).json({
       success: true,
-      message: "Invitation email sent",
+      message: "Invitation sent successfully",
     });
 
   } catch (error) {
     console.error(error);
     return res.status(500).json({
+      success: false,
       message: "Failed to invite member",
     });
   }
 };
-
 
 // GET PROJECT MEMBERS
 const getProjectMembers = async (req, res) => {

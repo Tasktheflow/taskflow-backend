@@ -28,7 +28,7 @@ router.get("/", authMiddleware, getMyProjects);
 router.get("/deleted", authMiddleware, getDeletedProjects);
 router.patch("/restore/:id", authMiddleware, restoreProject);
 router.get("/:id/activity", authMiddleware, getProjectActivity);
-//router.post("/:projectId/invite", authMiddleware, inviteMember);
+router.post("/:projectId/invite", authMiddleware, inviteMember);
 //router.post("/invitations/accept", authMiddleware, acceptInvitation);
 
 

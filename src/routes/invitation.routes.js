@@ -11,7 +11,7 @@ const {
 } = require("../controllers/invitation.controller");
 
 // Send invitation
-router.post("/", authMiddleware, inviteMember);
+//router.post("/", authMiddleware, inviteMember);
 
 // Accept invitation
 router.post("/accept", authMiddleware, acceptInvitation);
