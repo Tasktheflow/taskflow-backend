@@ -22,23 +22,6 @@ const createProject = async (req, res) => {
       });
     }
 
-    const allowedColors = [
-      "green",
-      "blue",
-      "gray",
-      "red",
-      "yellow",
-      "teal",
-      "orange",
-    ];
-
-    if (color && !allowedColors.includes(color)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid project color",
-      });
-    }
-
     const project = await Project.create({
       projectTitle,
       description,
@@ -56,7 +39,7 @@ const createProject = async (req, res) => {
       message: `Project "${project.projectTitle}" was created`,
     });
 
-    //  Handle initial invitations BEFORE sending response
+    // Handle invitations
     if (members && Array.isArray(members)) {
       for (const email of members) {
         const normalizedEmail = email.toLowerCase();
@@ -85,17 +68,20 @@ const createProject = async (req, res) => {
 
         const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${token}`;
 
-        await sendEmail({
+        sendEmail({
           to: normalizedEmail,
           subject: "Project Invitation",
           html: `
             <p>You were invited to join <b>${project.projectTitle}</b>.</p>
             <a href="${inviteLink}">${inviteLink}</a>
           `,
-        });
+        }).catch(err =>
+          console.error("Email error:", err.message)
+        );
       }
     }
 
+    //  RESPONSE MOVED OUTSIDE LOOP
     const populatedProject = await Project.findById(project._id)
       .populate("members", "username email")
       .populate("owner", "username email");
@@ -113,8 +99,8 @@ const createProject = async (req, res) => {
       message: "Failed to create project",
     });
   }
-};
-// INVITE MEMBER 
+
+};// INVITE MEMBER 
 const inviteMember = async (req, res) => {
   try {
     const { projectId } = req.params;
@@ -202,7 +188,7 @@ const inviteMember = async (req, res) => {
 
     const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${token}`;
 
-    await sendEmail({
+     sendEmail({
       to: normalizedEmail,
       subject: "Project Invitation",
       html: `
@@ -211,7 +197,8 @@ const inviteMember = async (req, res) => {
         <a href="${inviteLink}">${inviteLink}</a>
         <p>This link expires in 24 hours.</p>
       `,
-    });
+    
+    }).catch(err => console.error("Email error:", err.message));
 
     return res.status(200).json({
       success: true,
