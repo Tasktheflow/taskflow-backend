@@ -1,19 +1,22 @@
-const transporter = require("./mailer");
+const SibApiV3Sdk = require("sib-api-v3-sdk");
 
-const sendEmail = async ({ to, subject, html }) => {
-  if (!to) return;
+const client = SibApiV3Sdk.ApiClient.instance;
+const apiKey = client.authentications["api-key"];
+apiKey.apiKey = process.env.BREVO_API_KEY;
 
+const tranEmailApi = new SibApiV3Sdk.TransactionalEmailsApi();
+
+const sendEmail = async (to, subject, htmlContent) => {
   try {
-    const info = await transporter.sendMail({
-      from: process.env.EMAIL_FROM,
-      to,
+    await tranEmailApi.sendTransacEmail({
+      sender: { email: process.env.EMAIL_FROM },
+      to: [{ email: to }],
       subject,
-      html,
+      htmlContent,
     });
-
-    console.log("Email sent successfully:", info.response);
+    console.log("Email sent successfully");
   } catch (error) {
-    console.error("Email sending failed:", error);
+    console.log("Email error:", error);
   }
 };
 
