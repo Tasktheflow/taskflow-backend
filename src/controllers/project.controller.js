@@ -3,10 +3,11 @@ const User = require("../models/User.model");
 const logActivity = require("../utils/activityLogger");
 const Activity = require("../models/activity.model");
 const notify = require("../utils/notify");
-const sendEmail = require("../utils/sendEmail");
+//const sendEmail = require("../utils/sendEmail");
+const sendEmail = require("../utils/emailService");
 const crypto = require("crypto");
 const Invitation = require("../models/invitation.model");
-
+const { inviteTemplate } = require("../utils/emailTemplate");
 
 
 
@@ -71,7 +72,7 @@ const createProject = async (req, res) => {
         sendEmail({
           to: normalizedEmail,
           subject: "Project Invitation",
-          html: `
+          htmlContent: `
             <p>You were invited to join <b>${project.projectTitle}</b>.</p>
             <a href="${inviteLink}">${inviteLink}</a>
           `,
@@ -100,7 +101,8 @@ const createProject = async (req, res) => {
     });
   }
 
-};// INVITE MEMBER 
+};
+// INVITE MEMBER 
 const inviteMember = async (req, res) => {
   try {
     const { projectId } = req.params;
@@ -188,15 +190,12 @@ const inviteMember = async (req, res) => {
 
     const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${token}`;
 
-     sendEmail({
-      to: normalizedEmail,
-      subject: "Project Invitation",
-      html: `
-        <p>You were invited to join <b>${project.projectTitle}</b>.</p>
-        <p>Click below to accept:</p>
-        <a href="${inviteLink}">${inviteLink}</a>
-        <p>This link expires in 24 hours.</p>
-      `,
+     await sendEmail({
+  to: normalizedEmail,
+  subject: "You’ve been invited to join a project",
+  htmlContent: inviteTemplate(project.projectTitle, inviteLink),
+
+
     
     }).catch(err => console.error("Email error:", err.message));
 
@@ -424,7 +423,7 @@ const addMember = async (req, res) => {
     await sendEmail({
       to: user.email,
       subject: "Added to a project",
-      html: `
+      htmlContent: `
         <p>Hello ${user.username},</p>
         <p>You were added to the project <b>${project.projectTitle}</b>.</p>
       `,
@@ -505,7 +504,7 @@ if (!isMember) {
     await sendEmail({
       to: removedUser.email,
       subject: "Removed from project",
-      html: `
+      htmlContent: `
         <p>Hello ${removedUser.username},</p>
         <p>You were removed from the project <b>${project.projectTitle}</b>.</p>
       `,

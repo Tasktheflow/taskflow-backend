@@ -2,6 +2,7 @@ const Invitation = require("../models/invitation.model");
 const Project = require("../models/project.model");
 const logActivity = require("../utils/activityLogger");
 const notify = require("../utils/notify");
+const sendEmail = require("../utils/emailService");
 
 const acceptInvitation = async (req, res) => {
   try {
@@ -62,7 +63,8 @@ const acceptInvitation = async (req, res) => {
     }
 
     // Get project
-    const project = await Project.findById(invitation.project);
+    const project = await Project.findById(invitation.project)
+  .populate("owner", "email username");
 
     if (!project) {
       return res.status(404).json({
@@ -92,12 +94,19 @@ const acceptInvitation = async (req, res) => {
 
       // Notify Project Owner
       await notify({
-        user: project.owner,
+        user: project.owner._id,
         type: "PROJECT_JOINED",
         project: project._id,
         message: `${req.user.username} joined your project "${project.projectTitle}"`,
       });
     }
+
+    sendEmail({
+  to: project.owner.email,
+  subject: "A new member joined your project",
+  htmlContent: `<p>${req.user.username} joined ${project.projectTitle}</p>`,
+}).catch(err => console.error("Owner email failed:", err.message));
+
 
     // Mark invitation as accepted
     invitation.status = "accepted";

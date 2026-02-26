@@ -2,9 +2,10 @@ const Task = require("../models/task.model");
 const Project = require("../models/project.model");
 const logActivity = require("../utils/activityLogger");
 const notify = require("../utils/notify");
-const sendEmail = require("../utils/sendEmail");
+//const sendEmail = require("../utils/sendEmail");
+const sendEmail = require("../utils/emailService");
 const User = require("../models/User.model");
-
+const { taskAssignedTemplate } = require("../utils/taskEmailTemplate");
 
 
 const Activity = require("../models/activity.model");
@@ -321,7 +322,7 @@ if (task.assignedTo.toString() !== req.user._id.toString()) {
     await sendEmail({
       to: owner.email,
       subject: "Task completed",
-      html: `
+      htmlContent: `
         <p>Hello ${owner.username},</p>
         <p>The task <b>${task.title}</b> has been completed.</p>
       `,
@@ -577,15 +578,16 @@ if (task.createdBy.toString() !== req.user._id.toString()) {
 
     const assignedUser = await User.findById(userId);
 
-await sendEmail({
+sendEmail({
   to: assignedUser.email,
   subject: "You have been assigned a task",
-  html: `
-    <p>Hello ${assignedUser.username},</p>
-    <p>You were assigned to the task <b>${task.title}</b>.</p>
-    <p>Please log in to view details.</p>
-  `,
-});
+  htmlContent: taskAssignedTemplate(
+    assignedUser.username,
+    task.title
+  ),
+}).catch(err =>
+  console.error("Assignment email failed:", err.message)
+);
 
     // Activity log
     await logActivity({

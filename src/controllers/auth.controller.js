@@ -2,7 +2,8 @@ const User = require("../models/User.model");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const notify = require("../utils/notify");
-const sendEmail =require("../utils/sendEmail");
+//const sendEmail =require("../utils/sendEmail");
+const sendEmail = require("../utils/emailService");
 
 const generateToken = (user) => {
   return jwt.sign(
@@ -45,6 +46,16 @@ const signup = async (req, res) => {
       password: hashedPassword,
     });
 
+    await sendEmail({
+  to: user.email,
+  subject: "Welcome to TaskFlow ",
+  htmlContent: `
+    <h2>Welcome to TaskFlow</h2>
+    <p>Hello ${user.username},</p>
+    <p>Your account has been created successfully.</p>
+    <p>Start managing your projects efficiently </p>
+  `,
+});
     const token = generateToken(user);
 
     res.status(201).json({
@@ -123,16 +134,16 @@ const signin = async (req, res) => {
         message: "New login detected on your account",
       });
 
-      await sendEmail({
-        to: user.email,
-        subject: "New login detected",
-        html: `
-          <p>Hello ${user.username},</p>
-          <p>A new login was detected on your account.</p>
-          <p>If this wasn't you, please reset your password immediately.</p>
-        `,
-      });
-    } catch (err) {
+await sendEmail({
+  to: user.email,
+  subject: "New Login Detected ",
+  htmlContent: `
+    <h3>Login Alert</h3>
+    <p>Hello ${user.username},</p>
+    <p>A new login was detected on your account.</p>
+    <p>If this wasn’t you, please change your password immediately.</p>
+  `,
+});    } catch (err) {
       console.error("Login notification failed:", err.message);
     }
 
