@@ -30,4 +30,4 @@ const getProjectActivity = async (req, res) => {
   }
 };
 
-module.exports = { getProjectActivity };
+
