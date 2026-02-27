@@ -13,6 +13,7 @@ const activitySchema = new mongoose.Schema(
       required: true,
       enum: [
         "CREATE_TASK",
+        "INVITE_MEMBER",
         "UPDATE_TASK",
         "DELETE_TASK",
         "RESTORE_TASK",

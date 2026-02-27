@@ -102,16 +102,19 @@ const createProject = async (req, res) => {
   }
 
 };
-// INVITE MEMBER 
+// INVITE MEMBER
 const inviteMember = async (req, res) => {
   try {
     const { projectId } = req.params;
     const { email } = req.body;
 
-    if (!email) {
+    // Normalize email properly
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    if (!normalizedEmail) {
       return res.status(400).json({
         success: false,
-        message: "Email is required",
+        message: "Invalid email address",
       });
     }
 
@@ -124,7 +127,6 @@ const inviteMember = async (req, res) => {
       });
     }
 
-    // Only owner can invite
     if (project.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -132,9 +134,6 @@ const inviteMember = async (req, res) => {
       });
     }
 
-    const normalizedEmail = email.toLowerCase();
-
-    // Prevent duplicate pending invite
     const existingInvite = await Invitation.findOne({
       email: normalizedEmail,
       project: project._id,
@@ -149,7 +148,6 @@ const inviteMember = async (req, res) => {
       });
     }
 
-    // Prevent inviting existing member
     const existingUser = await User.findOne({ email: normalizedEmail });
 
     if (existingUser) {
@@ -165,7 +163,6 @@ const inviteMember = async (req, res) => {
       }
     }
 
-    // Create invitation token
     const token = crypto.randomBytes(32).toString("hex");
 
     const expiresAt = new Date();
@@ -190,14 +187,13 @@ const inviteMember = async (req, res) => {
 
     const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${token}`;
 
-     await sendEmail({
-  to: normalizedEmail,
-  subject: "You’ve been invited to join a project",
-  htmlContent: inviteTemplate(project.projectTitle, inviteLink),
+    console.log("Invite email being sent to:", normalizedEmail);
 
-
-    
-    }).catch(err => console.error("Email error:", err.message));
+    await sendEmail({
+      to: normalizedEmail,
+      subject: "You’ve been invited to join a project",
+      htmlContent: inviteTemplate(project.projectTitle, inviteLink),
+    });
 
     return res.status(200).json({
       success: true,
