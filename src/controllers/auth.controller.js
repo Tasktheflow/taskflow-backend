@@ -2,6 +2,7 @@ const User = require("../models/User.model");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const notify = require("../utils/notify");
+const crypto =require("crypto");
 //const sendEmail =require("../utils/sendEmail");
 const sendEmail = require("../utils/emailService");
 
@@ -156,9 +157,100 @@ await sendEmail({
   }
 };
 
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // generate reset token
+    const token = crypto.randomBytes(32).toString("hex");
+
+    user.resetPasswordToken = token;
+
+    // token expires in 1 hour
+    user.resetPasswordExpires = Date.now() + 3600000;
+
+    await user.save();
+
+    const resetLink = `https://task-flow-g8s6.vercel.app/reset-password?token=${token}`;
+
+    await sendEmail({
+      to: user.email,
+      subject: "Reset Your Password",
+      htmlContent: `
+        <h3>Password Reset</h3>
+        <p>Click the link below to reset your password.</p>
+        <a href="${resetLink}">Reset Password</a>
+        <p>This link expires in 1 hour.</p>
+      `,
+    });
+
+    res.json({
+      success: true,
+      message: "Password reset email sent",
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+    });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired token",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    user.password = hashedPassword;
+
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Password reset successful",
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
 
 
 module.exports = {
   signup,
   signin,
+  forgotPassword,
+  resetPassword,
 };
