@@ -157,6 +157,7 @@ await sendEmail({
   }
 };
 
+
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -170,17 +171,24 @@ const forgotPassword = async (req, res) => {
       });
     }
 
-    // generate reset token
-    const token = crypto.randomBytes(32).toString("hex");
+    // generate raw token
+    const resetToken = crypto.randomBytes(32).toString("hex");
 
-    user.resetPasswordToken = token;
+    // hash token before saving to DB
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
 
-    // token expires in 1 hour
-    user.resetPasswordExpires = Date.now() + 3600000;
+    user.resetPasswordToken = hashedToken;
+
+    //  expire in 15 minutes
+    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
 
     await user.save();
 
-    const resetLink = `https://task-flow-g8s6.vercel.app/reset-password?token=${token}`;
+    //  send RAW token in email
+    const resetLink = `https://task-flow-g8s6.vercel.app/reset-password?token=${resetToken}`;
 
     await sendEmail({
       to: user.email,
@@ -189,7 +197,7 @@ const forgotPassword = async (req, res) => {
         <h3>Password Reset</h3>
         <p>Click the link below to reset your password.</p>
         <a href="${resetLink}">Reset Password</a>
-        <p>This link expires in 1 hour.</p>
+        <p>This link expires in 15 minutes.</p>
       `,
     });
 
@@ -209,24 +217,38 @@ const forgotPassword = async (req, res) => {
 
 const resetPassword = async (req, res) => {
   try {
-    const { token, password } = req.body;
+    const { token, password, confirmPassword } = req.body;
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Passwords do not match",
+      });
+    }
+
+    // hash the token from user
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
 
     const user = await User.findOne({
-      resetPasswordToken: token,
+      resetPasswordToken: hashedToken,
       resetPasswordExpires: { $gt: Date.now() },
     });
 
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired token",
+        message: "Token is invalid or expired",
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // update password
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
 
-    user.password = hashedPassword;
-
+    // clear reset fields
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
 
@@ -239,14 +261,12 @@ const resetPassword = async (req, res) => {
 
   } catch (error) {
     console.error(error);
-
     res.status(500).json({
       success: false,
-      message: "Server error",
+      message: "Something went wrong",
     });
   }
 };
-
 
 module.exports = {
   signup,
