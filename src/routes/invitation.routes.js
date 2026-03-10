@@ -14,6 +14,6 @@ const {
 //router.post("/", authMiddleware, inviteMember);
 
 // Accept invitation
-router.post("/accept", acceptInvitation);
+router.post("/accept", authMiddleware, acceptInvitation);
 
 module.exports = router;
