@@ -6,12 +6,15 @@ const {
      signin,
      forgotPassword,
      resetPassword,
+     logout,
     } = require("../controllers/auth.controller");
+const authMiddleware = require("../middlewares/auth.middleware");
     
 
 router.post("/forgot-password", forgotPassword);
 
 router.post("/reset-password", resetPassword);
+router.post("/logout", authMiddleware, logout);
     
 
 
