@@ -34,7 +34,7 @@ const createProject = async (req, res) => {
     await logActivity({
       project: project._id,
       user: req.user._id,
-      action: "CREATE_PROJECT",
+      action: "PROJECT_CREATED",
       entityType: "PROJECT",
       entityId: project._id,
       message: `Project "${project.projectTitle}" was created`,
@@ -172,6 +172,7 @@ const inviteMember = async (req, res) => {
       email: normalizedEmail,
       project: project._id,
       token,
+      invitedBy: req.user._id,
       status: "pending",
       expiresAt,
     });
@@ -293,7 +294,7 @@ const deleteProject = async (req, res) => {
     }
 await logActivity({
   user: req.user._id,
-  action: "DELETE_PROJECT",
+  action: "PROJECT_DELETED",
   entityType: "PROJECT",
   entityId: project._id,
   project: project._id,
@@ -349,7 +350,7 @@ const restoreProject = async (req, res) => {
    await logActivity({
   project: project._id,
   user: req.user._id,
-  action: "RESTORE_PROJECT",
+  action: "PROJECT_RESTORED",
   entityType: "PROJECT",
   entityId: project._id,
   message: `Project "${project.projectTitle}" was restored`,

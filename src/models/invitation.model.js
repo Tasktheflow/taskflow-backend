@@ -22,6 +22,11 @@ const invitationSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+
+    invitedBy:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User"
+    },
     status: {
       type: String,
       enum: ["pending", "accepted", "expired"],

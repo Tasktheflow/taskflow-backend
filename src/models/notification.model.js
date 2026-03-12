@@ -15,7 +15,8 @@ const notificationSchema = new mongoose.Schema(
         "TASK_ASSIGNED",
          "TASK_COMPLETED",
          "ADDED_TO_PROJECT",
-         "REMOVED_FROM_PROJECT"
+         "REMOVED_FROM_PROJECT",
+         "PROJECT_JOINED"
 
         ],
       required: true,
@@ -46,6 +47,7 @@ const notificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Notification", notificationSchema);
 notificationSchema.index({ user: 1, read: 1, createdAt: -1 });
+module.exports = mongoose.model("Notification", notificationSchema);
+
 

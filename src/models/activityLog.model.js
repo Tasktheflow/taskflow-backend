@@ -23,6 +23,9 @@ const activityLogSchema = new mongoose.Schema(
         "TASK_DELETED",
         "TASK_RESTORED",
         "MEMBER_ADDED",
+        "ADD_MEMBER",
+        "REMOVE_MEMBER",
+        "JOIN_PROJECT"
       ],
 
       

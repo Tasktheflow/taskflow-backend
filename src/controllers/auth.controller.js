@@ -5,6 +5,8 @@ const notify = require("../utils/notify");
 const crypto =require("crypto");
 //const sendEmail =require("../utils/sendEmail");
 const sendEmail = require("../utils/emailService");
+const Invitation =require("../models/invitation.model");
+const Project =require("../models/project.model"); 
 
 const generateToken = (user) => {
   return jwt.sign(
@@ -17,7 +19,7 @@ const generateToken = (user) => {
 // Signup USER
 const signup = async (req, res) => {
   try {
-    const { username, email, password, confirmPassword } = req.body;
+    const { username, email, password, confirmPassword, inviteToken } = req.body;
 
     if (!username || !email || !password || !confirmPassword) {
       return res.status(400).json({ 
@@ -31,7 +33,7 @@ const signup = async (req, res) => {
     }
 
     const existingUser = await User.findOne({ 
-      $or: [{email }, { username }],
+      $or: [{email: email.toLowerCase() }, { username }],
     });
     if (existingUser) {
       return res.status(409).json({
@@ -43,10 +45,42 @@ const signup = async (req, res) => {
 
     const user = await User.create({
       username,
-      email,
+      email: email.toLowerCase(),
       password: hashedPassword,
     });
 
+    // Handle project invitation
+let invitation = null;
+
+if (inviteToken) {
+
+  invitation = await Invitation.findOne({
+    token: inviteToken,
+    email: email.toLowerCase(),
+    status: "pending",
+    expiresAt: { $gt: new Date() }
+  });
+
+  if (invitation) {
+
+    const project = await Project.findById(invitation.project);
+
+    if (project) {
+
+      const alreadyMember = project.members.some(
+        member => member.toString() === user._id.toString()
+      );
+
+      if (!alreadyMember) {
+        project.members.push(user._id);
+        await project.save();
+      }
+
+      invitation.status = "accepted";
+      await invitation.save();
+    }
+  }
+}
     await sendEmail({
   to: user.email,
   subject: "Welcome to TaskFlow ",
@@ -57,22 +91,29 @@ const signup = async (req, res) => {
     <p>Start managing your projects efficiently </p>
   `,
 });
-    const token = generateToken(user);
+   const token = generateToken(user);
 
-    res.status(201).json({
-      success: true,
-      message: "Registration successful",
-      data: {
-        token,
-        user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-      },
-      },
-    });
-    
+let projectId = null;
+
+if (invitation) {
+  projectId = invitation.project;
+}
+
+res.status(201).json({
+  success: true,
+  message: "Registration successful",
+  data: {
+    token,
+    projectId,
+    user: {
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+    },
+  },
+});
+
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -81,6 +122,7 @@ const signup = async (req, res) => {
     });
   }
 };
+
 
 // Signin USER
 const signin = async (req, res) => {
@@ -94,7 +136,7 @@ const signin = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
       return res.status(401).json({
         success: false,
