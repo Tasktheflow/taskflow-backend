@@ -7,6 +7,7 @@ const crypto =require("crypto");
 const sendEmail = require("../utils/emailService");
 const Invitation =require("../models/invitation.model");
 const Project =require("../models/project.model"); 
+const logActivity = require("../utils/activityLogger");
 
 const generateToken = (user) => {
   return jwt.sign(
@@ -49,39 +50,57 @@ const signup = async (req, res) => {
       password: hashedPassword,
     });
 
-    // Handle project invitation
+let projectId = null;
 let invitation = null;
 
 if (inviteToken) {
 
-  invitation = await Invitation.findOne({
-    token: inviteToken,
-    email: email.toLowerCase(),
-    status: "pending",
-    expiresAt: { $gt: new Date() }
-  });
+ const hashedToken = crypto
+  .createHash("sha256")
+  .update(inviteToken)
+  .digest("hex");
 
+invitation = await Invitation.findOne({
+  token: hashedToken,
+  email: email.toLowerCase(),
+  status: "pending",
+  expiresAt: { $gt: new Date() }
+});
   if (invitation) {
 
-    const project = await Project.findById(invitation.project);
-
+    const project = await Project.findOne({
+  _id: invitation.project,
+  deleted: false
+});
     if (project) {
 
       const alreadyMember = project.members.some(
-        member => member.toString() === user._id.toString()
-      );
+  member => member.toString() === user._id.toString()
+);
 
-      if (!alreadyMember) {
-        project.members.push(user._id);
-        await project.save();
-      }
-
+if (!alreadyMember) {
+  project.members.push(user._id);
+  await project.save();
+}
       invitation.status = "accepted";
       await invitation.save();
+
+      await logActivity({
+        project: project._id,
+        user: user._id,
+        action: "JOIN_PROJECT",
+        entityType: "Project",
+        entityId: project._id,
+        message: `${user.email} joined the project`,
+      });
+
+      projectId = project._id;
+
     }
+
   }
-}
-    await sendEmail({
+
+}    await sendEmail({
   to: user.email,
   subject: "Welcome to TaskFlow ",
   htmlContent: `
@@ -92,12 +111,6 @@ if (inviteToken) {
   `,
 });
    const token = generateToken(user);
-
-let projectId = null;
-
-if (invitation) {
-  projectId = invitation.project;
-}
 
 res.status(201).json({
   success: true,
@@ -127,7 +140,7 @@ res.status(201).json({
 // Signin USER
 const signin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, inviteToken } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -152,6 +165,45 @@ const signin = async (req, res) => {
       });
     }
 
+    let projectId = null;
+
+if (inviteToken) {
+
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(inviteToken)
+    .digest("hex");
+
+  const invitation = await Invitation.findOne({
+    token: hashedToken,
+    email: user.email,
+    status: "pending",
+    expiresAt: { $gt: new Date() }
+  });
+
+  if (invitation) {
+
+    const project = await Project.findById(invitation.project);
+
+    if (project) {
+
+      const alreadyMember = project.members.some(
+        member => member.toString() === user._id.toString()
+      );
+
+      if (!alreadyMember) {
+        project.members.push(user._id);
+        await project.save();
+      }
+
+      invitation.status = "accepted";
+      await invitation.save();
+
+      projectId = project._id;
+    }
+  }
+}
+    
     const token = generateToken(user);
 
     // SEND RESPONSE
@@ -160,6 +212,7 @@ const signin = async (req, res) => {
       message: "Login successful",
       data: {
         token,
+        projectId,
         user: {
           id: user._id,
           username: user.username,

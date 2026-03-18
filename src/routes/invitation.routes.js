@@ -8,6 +8,7 @@ const {
 
 const {
   acceptInvitation,
+  verifyInvitation
 } = require("../controllers/invitation.controller");
 
 // Send invitation
@@ -15,5 +16,6 @@ const {
 
 // Accept invitation
 router.post("/accept", authMiddleware, acceptInvitation);
+router.get("/verify", verifyInvitation);
 
 module.exports = router;

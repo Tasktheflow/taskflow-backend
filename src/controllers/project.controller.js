@@ -54,7 +54,12 @@ const createProject = async (req, res) => {
 
         if (existingInvite) continue;
 
-        const token = crypto.randomBytes(32).toString("hex");
+       const rawToken = crypto.randomBytes(32).toString("hex");
+
+        const hashedToken = crypto
+          .createHash("sha256")
+          .update(rawToken)
+          .digest("hex");
 
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + 24);
@@ -62,12 +67,12 @@ const createProject = async (req, res) => {
         await Invitation.create({
           email: normalizedEmail,
           project: project._id,
-          token,
+          token: hashedToken,
           status: "pending",
           expiresAt,
         });
 
-        const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${token}`;
+        const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${rawToken}`;
 
         sendEmail({
           to: normalizedEmail,
@@ -163,7 +168,12 @@ const inviteMember = async (req, res) => {
       }
     }
 
-    const token = crypto.randomBytes(32).toString("hex");
+    const rawToken = crypto.randomBytes(32).toString("hex");
+
+const hashedToken = crypto
+  .createHash("sha256")
+  .update(rawToken)
+  .digest("hex");
 
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24);
@@ -171,7 +181,7 @@ const inviteMember = async (req, res) => {
     await Invitation.create({
       email: normalizedEmail,
       project: project._id,
-      token,
+      token: hashedToken,
       invitedBy: req.user._id,
       status: "pending",
       expiresAt,
@@ -186,7 +196,7 @@ const inviteMember = async (req, res) => {
       message: `${req.user.email} invited ${normalizedEmail}`,
     });
 
-    const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${token}`;
+    const inviteLink = `https://task-flow-g8s6.vercel.app/invite?token=${rawToken}`;
 
     console.log("Invite email being sent to:", normalizedEmail);
 

@@ -3,6 +3,7 @@ const Project = require("../models/project.model");
 const logActivity = require("../utils/activityLogger");
 const notify = require("../utils/notify");
 const sendEmail = require("../utils/emailService");
+const crypto = require("crypto");
 
 const acceptInvitation = async (req, res) => {
   try {
@@ -15,16 +16,12 @@ const acceptInvitation = async (req, res) => {
       });
     }
 
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required",
-      });
-    }
+const hashedToken = crypto
+  .createHash("sha256")
+  .update(token)
+  .digest("hex");
 
-    // Find invitation
-    const invitation = await Invitation.findOne({ token });
-
+const invitation = await Invitation.findOne({ token: hashedToken });
     if (!invitation) {
       return res.status(400).json({
         success: false,
@@ -87,7 +84,7 @@ const acceptInvitation = async (req, res) => {
         project: project._id,
         user: req.user._id,
         action: "JOIN_PROJECT",
-        entityType: "PROJECT",
+        entityType: "Project",
         entityId: project._id,
         message: `${req.user.email} joined the project`,
       });
@@ -127,4 +124,66 @@ const acceptInvitation = async (req, res) => {
   }
 };
 
-module.exports = { acceptInvitation };
+const verifyInvitation = async (req, res) => {
+
+  try {
+
+    const { token } = req.query;
+
+const hashedToken = crypto
+  .createHash("sha256")
+  .update(token)
+  .digest("hex");
+
+const invitation = await Invitation.findOne({ token: hashedToken });
+    if (!invitation) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid invitation",
+      });
+    }
+
+    if (invitation.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        message: "Invitation already used",
+      });
+    }
+
+    if (invitation.expiresAt < new Date()) {
+
+      invitation.status = "expired";
+      await invitation.save();
+
+      return res.status(400).json({
+        success: false,
+        message: "Invitation expired",
+      });
+    }
+
+    const project = await Project.findById(invitation.project);
+
+    res.json({
+      success: true,
+      project: {
+        id: project._id,
+        title: project.projectTitle,
+      },
+      email: invitation.email,
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+
+  }
+
+};
+
+module.exports = { 
+  acceptInvitation,
+verifyInvitation
+};
